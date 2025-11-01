@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import WalletConnect from '@/components/WalletConnect';
+import AssetBalance from '@/components/AssetBalance';
+import CreateTrustline from '@/components/CreateTrustline';
 
 export default function Home() {
   const [publicKey, setPublicKey] = useState('');
