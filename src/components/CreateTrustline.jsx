@@ -1,57 +1,25 @@
-// src/components/CreateTrustline.jsx
-
 'use client';
 
 import { useState } from 'react';
-// Importar clases necesarias de Stellar SDK
 import { 
-  Server,           // Para conectar a Stellar
-  TransactionBuilder, // Para construir transacciones
-  Operation,        // Para operaciones (ChangeTrust)
-  Asset,            // Para definir assets
-  Networks          // Para especificar red (testnet/mainnet)
-} from 'stellar-sdk';
-// Importar Freighter API para firmar
-import { signTransaction, getPublicKey } from '@stellar/freighter-api';
-// Importar cliente de Supabase
+  isConnected, 
+  getAddress,
+  signTransaction 
+} from "@stellar/freighter-api";
 import { supabase } from '../lib/supabase';
-// Importar constantes
 import { HORIZON_URLS } from '../lib/constants';
-// Importar Spinner
 import Spinner from './Spinner';
 
-/**
- * Componente CreateTrustline
- * 
- * Propósito: Crear una trustline para un asset nativo
- * 
- * Props:
- * - asset: Objeto { code, issuer } del asset
- * - onSuccess: Callback cuando trustline se crea exitosamente
- * 
- * MEJORA: Ahora valida si la trustline ya existe antes de crearla
- */
 export default function CreateTrustline({ asset, onSuccess }) {
-  // Estado para mostrar loading
   const [loading, setLoading] = useState(false);
-  
-  // Estado para mensajes de éxito/error
   const [status, setStatus] = useState({ type: '', message: '' });
-  
-  // Estado para saber si la trustline ya existe
   const [trustlineExists, setTrustlineExists] = useState(false);
 
-  /**
-   * Función para verificar si la trustline ya existe
-   * Se llama antes de intentar crearla
-   */
-  const checkExistingTrustline = async (publicKey) => {
+  const checkExistingTrustline = async (publicKey, StellarSdk) => {
     try {
-      // Verificar en Stellar Network
-      const server = new Server(HORIZON_URLS.testnet);
+      const server = new StellarSdk.Horizon.Server(HORIZON_URLS.testnet);
       const account = await server.loadAccount(publicKey);
       
-      // Buscar si ya existe el asset en los balances
       const existsOnChain = account.balances.some(
         b => b.asset_code === asset.code && b.asset_issuer === asset.issuer
       );
@@ -60,8 +28,6 @@ export default function CreateTrustline({ asset, onSuccess }) {
         return { exists: true, source: 'blockchain' };
       }
       
-      // Si no existe en blockchain, verificar en Supabase
-      // (por si hubo un error anterior y quedó registrado)
       const { data, error } = await supabase
         .from('trustlines')
         .select('*')
@@ -87,24 +53,27 @@ export default function CreateTrustline({ asset, onSuccess }) {
     }
   };
 
-  /**
-   * Función principal para crear la trustline
-   */
   const createTrustline = async () => {
     setLoading(true);
     setStatus({ type: '', message: '' });
 
     try {
-      // ========== PASO 1: OBTENER PUBLIC KEY ==========
-      const publicKey = await getPublicKey();
+      // ✅ Import dinámico de Stellar SDK
+      const StellarSdk = await import('@stellar/stellar-sdk');
+      
+      if (!(await isConnected())) {
+        throw new Error('Freighter no está conectado');
+      }
+      
+      const addressResult = await getAddress();
+      const publicKey = addressResult.address;
+      console.log("Wallet public key:", publicKey);
       
       if (!publicKey) {
         throw new Error('No se pudo obtener la public key');
       }
 
-      // ========== PASO 1.5: VERIFICAR SI YA EXISTE ==========
-      // MEJORA: Evitar crear trustlines duplicadas
-      const { exists, source } = await checkExistingTrustline(publicKey);
+      const { exists } = await checkExistingTrustline(publicKey, StellarSdk);
       
       if (exists) {
         setTrustlineExists(true);
@@ -113,61 +82,46 @@ export default function CreateTrustline({ asset, onSuccess }) {
           message: `⚠️ Ya tienes una trustline para ${asset.code}. No necesitas crear otra.`
         });
         setLoading(false);
-        return; // Salir sin crear
+        return;
       }
 
-      // ========== PASO 2: CONECTAR A STELLAR ==========
-      const server = new Server(HORIZON_URLS.testnet);
-      
-      // Cargar la cuenta para obtener su sequence number
+      const server = new StellarSdk.Horizon.Server(HORIZON_URLS.testnet);
       const account = await server.loadAccount(publicKey);
 
-      // ========== PASO 3: DEFINIR EL ASSET ==========
-      // Crear objeto Asset desde las props
-      const stellarAsset = new Asset(asset.code, asset.issuer);
+      const stellarAsset = new StellarSdk.Asset(asset.code, asset.issuer);
 
-      // ========== PASO 4: CONSTRUIR LA TRANSACCIÓN ==========
-      const transaction = new TransactionBuilder(account, {
-        // Fee: 100 stroops = 0.00001 XLM
-        fee: '100',
-        
-        // Network: TESTNET (MUY IMPORTANTE)
-        networkPassphrase: Networks.TESTNET
+      const transaction = new StellarSdk.TransactionBuilder(account, {
+        fee: StellarSdk.BASE_FEE,
+        networkPassphrase: StellarSdk.Networks.TESTNET
       })
-        // Agregar la operación ChangeTrust
         .addOperation(
-          Operation.changeTrust({
-            asset: stellarAsset,    // El asset para crear trustline
-            limit: '10000'          // Límite: máximo que quieres tener
+          StellarSdk.Operation.changeTrust({
+            asset: stellarAsset,
+            limit: '10000'
           })
         )
-        // Timeout: Transacción expira en 30 segundos
         .setTimeout(30)
-        // Construir (prepara para firmar)
         .build();
 
-      // ========== PASO 5: FIRMAR CON FREIGHTER ==========
-      // Convertir a XDR (formato que Freighter entiende)
       const xdr = transaction.toXDR();
       
-      // Pedir a Freighter que firme (abre popup)
       const signedXDR = await signTransaction(xdr, {
-        network: 'TESTNET',
-        networkPassphrase: Networks.TESTNET
+        networkPassphrase: StellarSdk.Networks.TESTNET
       });
 
-      // ========== PASO 6: ENVIAR A STELLAR ==========
-      // Reconstruir transacción desde XDR firmado
-      const signedTransaction = TransactionBuilder.fromXDR(
+      /* const signedTransaction = StellarSdk.TransactionBuilder.fromXDR(
         signedXDR,
-        Networks.TESTNET
-      );
+        StellarSdk.Networks.TESTNET
+      ); */
       
-      // Enviar a la red (3-5 segundos)
-      const result = await server.submitTransaction(signedTransaction);
+      //const result = await server.submitTransaction(signedTransaction);
+      const result = await fetch(`${HORIZON_URLS.testnet}/transactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ tx: signedXDR })
+      }).then(r => r.json());
 
-      // ========== PASO 7: GUARDAR EN SUPABASE ==========
-      // Guardar metadata en nuestra base de datos
+
       const { error: dbError } = await supabase
         .from('trustlines')
         .insert({
@@ -175,38 +129,34 @@ export default function CreateTrustline({ asset, onSuccess }) {
           asset_code: asset.code,
           asset_issuer: asset.issuer,
           trust_limit: 10000,
-          tx_hash: result.hash  // Hash de blockchain
+          tx_hash: result.hash
         });
 
       if (dbError) {
         console.error('Error saving to Supabase:', dbError);
-        // No lanzamos error porque la trustline SÍ se creó en Stellar
       }
 
-      // ========== PASO 8: NOTIFICAR ÉXITO ==========
       setStatus({
         type: 'success',
         message: `✅ Trustline creada exitosamente! Ahora puedes recibir ${asset.code}.`
       });
       
-      setTrustlineExists(true); // Marcar que ya existe
+      setTrustlineExists(true);
       
-      // Llamar callback si existe
       if (onSuccess) {
         onSuccess();
       }
 
     } catch (err) {
-      // ========== MANEJO DE ERRORES ==========
       console.error('Error creating trustline:', err);
       
-      // Diferentes tipos de errores
       let errorMessage = 'Error desconocido';
       
-      if (err.message.includes('User declined')) {
+      if (err.message.includes('User declined') || err.message.includes('User rejected')) {
         errorMessage = 'Rechazaste la transacción en Freighter';
-      } else if (err.response && err.response.data) {
-        // Errores de Stellar
+      } else if (err.message.includes('Freighter no está conectado')) {
+        errorMessage = 'Por favor conectá Freighter primero';
+      } else if (err.response?.data) {
         const resultCode = err.response.data.extras?.result_codes?.operations?.[0];
         
         if (resultCode === 'op_low_reserve') {
@@ -230,11 +180,8 @@ export default function CreateTrustline({ asset, onSuccess }) {
     }
   };
 
-  // ========== RENDER DEL COMPONENTE ==========
-  
   return (
     <div className="p-6 bg-white rounded-lg shadow-md border border-gray-200">
-      {/* Título */}
       <h2 className="text-2xl font-bold mb-2 text-gray-800">
         ✅ Crear Trustline
       </h2>
@@ -243,14 +190,12 @@ export default function CreateTrustline({ asset, onSuccess }) {
         Esto te permitirá recibir y enviar <strong>{asset.code}</strong>
       </p>
       
-      {/* Warning sobre el costo */}
       <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200 mb-4">
         <p className="text-sm text-yellow-800">
           ⚠️ <strong>Costo:</strong> 0.5 XLM de base reserve (recuperable si eliminas la trustline)
         </p>
       </div>
       
-      {/* Mostrar mensaje de status */}
       {status.message && (
         <div className={`p-3 rounded-lg mb-4 ${
           status.type === 'success' 
@@ -263,7 +208,6 @@ export default function CreateTrustline({ asset, onSuccess }) {
         </div>
       )}
       
-      {/* Botón para crear trustline */}
       <button
         onClick={createTrustline}
         disabled={loading || trustlineExists}
@@ -283,7 +227,6 @@ export default function CreateTrustline({ asset, onSuccess }) {
         )}
       </button>
       
-      {/* Información adicional */}
       <div className="mt-4 p-3 bg-gray-50 rounded-lg">
         <p className="text-xs text-gray-600">
           <strong>¿Qué pasa cuando creas una trustline?</strong>
@@ -292,7 +235,7 @@ export default function CreateTrustline({ asset, onSuccess }) {
           <li>Se "congela" 0.5 XLM (base reserve)</li>
           <li>Puedes recibir hasta 10,000 {asset.code}</li>
           <li>La transacción se registra en blockchain</li>
-          <li>Freighter te pedirá confirmar (con tu secret key)</li>
+          <li>Freighter te pedirá confirmar</li>
           <li>El sistema verifica que no exista una trustline duplicada</li>
         </ul>
       </div>

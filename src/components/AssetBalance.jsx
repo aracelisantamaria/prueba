@@ -4,7 +4,9 @@
 
 import { useState, useEffect } from 'react';
 // Importar Stellar SDK para consultar la red
-import { Server } from 'stellar-sdk';
+// import { Server } from 'stellar-sdk';
+//import { Server } from '@stellar/stellar-sdk';
+import { Horizon } from '@stellar/stellar-sdk';
 // Importar constantes
 import { HORIZON_URLS } from '../lib/constants';
 // Importar Spinner
@@ -48,7 +50,9 @@ export default function AssetBalance({ publicKey, asset }) {
     try {
       // Crear conexión al servidor de Stellar (testnet)
       // Usando constante centralizada en vez de hardcodear URL
-      const server = new Server(HORIZON_URLS.testnet);
+      //const server = new Server(HORIZON_URLS.testnet);
+      const server = new Horizon.Server(HORIZON_URLS.testnet);
+
       
       // Cargar la cuenta desde la red
       // Esto trae TODOS los datos de la cuenta

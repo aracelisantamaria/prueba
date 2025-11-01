@@ -1,20 +1,12 @@
-// src/app/page.jsx
-
 'use client';
 
 import { useState } from 'react';
-// Importar nuestros componentes
-import WalletConnect from '../components/WalletConnect';
-import AssetBalance from '../components/AssetBalance';
-import CreateTrustline from '../components/CreateTrustline';
+import WalletConnect from '@/components/WalletConnect';
+import AssetBalance from '@/components/AssetBalance';
+import CreateTrustline from '@/components/CreateTrustline';
 
-/**
- * Página Principal de la dApp
- * 
- * Esta página coordina todos los componentes
- */
 export default function Home() {
-  // Estado para guardar la public key cuando el usuario conecta
+  // Estado para la public key del usuario
   const [publicKey, setPublicKey] = useState('');
   
   // Estado para forzar refresh del balance después de crear trustline
@@ -29,9 +21,8 @@ export default function Home() {
 
   /**
    * Callback cuando la wallet se conecta
-   * Se pasa al componente WalletConnect
    */
-  const handleWalletConnect = (key) => {
+  const handleWalletConnect = (key: string) => {
     setPublicKey(key);
     console.log('Wallet connected:', key);
   };
@@ -45,46 +36,52 @@ export default function Home() {
     setRefreshKey(prev => prev + 1);
   };
 
-  // ========== RENDER ==========
-  
   return (
-    <main className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+    <main className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
       {/* Header */}
-      <div className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-4xl mx-auto px-6 py-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">
+      <div className="bg-white shadow-sm border-b">
+        <div className="max-w-4xl mx-auto px-6 py-8 text-center">
+          <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
             🚀 Assets Nativos en Stellar
           </h1>
-          <p className="text-gray-600">
-            Tu primera dApp de stablecoins en blockchain
-          </p>
+          <p className="text-gray-600 mt-2">Tu dApp de stablecoins en testnet</p>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="max-w-4xl mx-auto px-6 py-8">
+      {/* Contenido Principal */}
+      <div className="max-w-4xl mx-auto px-6 py-12">
         {/* Grid de componentes */}
         <div className="space-y-6">
           
           {/* Componente 1: Conectar Wallet */}
-          <WalletConnect onConnect={handleWalletConnect} />
-          
+          <div className="flex justify-center">
+            <WalletConnect onConnect={handleWalletConnect} />
+          </div>
+
+          {/* Mostrar wallet conectada */}
+          {publicKey && (
+            <div className="p-6 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border border-blue-200 text-center">
+              <p className="text-sm text-gray-700">
+                <strong>✅ Wallet conectada:</strong>
+              </p>
+              <p className="font-mono text-lg mt-1 break-all">{publicKey}</p>
+            </div>
+          )}
+
           {/* Componentes 2 y 3: Solo mostrar si hay wallet conectada */}
           {publicKey && (
             <>
               {/* Componente 2: Crear Trustline */}
               <CreateTrustline
-                assetCode={USDC_TESTNET.code}
-                assetIssuer={USDC_TESTNET.issuer}
+                asset={USDC_TESTNET}
                 onSuccess={handleTrustlineSuccess}
               />
-              
+
               {/* Componente 3: Ver Balance */}
               <AssetBalance
                 key={refreshKey} // Force re-mount cuando cambia refreshKey
                 publicKey={publicKey}
-                assetCode={USDC_TESTNET.code}
-                assetIssuer={USDC_TESTNET.issuer}
+                asset={USDC_TESTNET}
               />
             </>
           )}
