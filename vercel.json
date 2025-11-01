@@ -1,6 +1,4 @@
-cat > vercel.json << 'EOF'
 {
   "framework": "nextjs",
   "buildCommand": "next build"
 }
-EOF
