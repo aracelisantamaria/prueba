@@ -1,9 +1,12 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  experimental: {
-    srcDir: true,
+  // Remover srcDir que no existe
+  turbopack: {
+    root: process.cwd(),
   },
+  // Arreglar el warning de workspace
+  outputFileTracingRoot: __dirname,
 };
 
 export default nextConfig;
